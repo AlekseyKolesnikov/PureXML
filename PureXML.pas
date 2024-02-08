@@ -44,16 +44,17 @@ type
 
   IXMLNodeList = class(TList)
   protected
-    FParent: IXMLNode;
+    FOwner: IXMLNode;
     function Get(Index: Integer): IXMLNode;
     procedure Put(Index: Integer; Node: IXMLNode);
   public
-    constructor Create(Parent: IXMLNode);
+    constructor Create(Owner: IXMLNode);
     destructor Destroy; override;
 
     function Add(Item: IXMLNode): Integer;
     function FindNode(Name: String): IXMLNode;
     function Remove(Item: IXMLNode): Integer;
+    function RemoveAndFree(Item: IXMLNode): Integer;
 
     property Items[Index: Integer]: IXMLNode read Get write Put; default;
   end;
@@ -230,7 +231,6 @@ begin
   sXML := FslXML.Text;
   iEnd := 1;
   Match := '';
-  FXML.FName := '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
   GetStartEnd(sXML, Match, iStart, iEnd);
   if Match = '' then Exit;
@@ -289,6 +289,7 @@ begin
 
   FslXML := TStringList.Create;
   FXML := IXMLNode.Create(nil, ntDocument);
+  FXML.FName := '<?xml version="1.0" encoding="utf-8"?>';
   FTab := '  ';
 end;
 
@@ -304,6 +305,7 @@ procedure TXMLDocument.LoadFromFile(FileName: String);
 begin
   FXML.Free;
   FXML := IXMLNode.Create(nil, ntDocument);
+  FXML.FName := '<?xml version="1.0" encoding="utf-8"?>';
 
   FslXML.LoadFromFile(FileName);
   BuildXmlTree;
@@ -356,17 +358,17 @@ constructor IXMLNode.Create(aParent: IXMLNode; aNodeType: TNodeType);
 begin
   inherited Create;
 
-  FParent := aParent;
   FNodes := IXMLNodeList.Create(Self);
   FAttributes := TStringList.Create;
 
+  FParent := aParent;
   NodeType := aNodeType;
 end;
 
 destructor IXMLNode.Destroy;
 begin
-  FNodes.Free;
   FAttributes.Free;
+  FNodes.Free;
 
   inherited;
 end;
@@ -439,14 +441,14 @@ begin
     Item.FParent.FNodes.Remove(Item);
 
   Result := inherited Add(Item);
-  Item.FParent := FParent;
+  Item.FParent := FOwner;
 end;
 
-constructor IXMLNodeList.Create(Parent: IXMLNode);
+constructor IXMLNodeList.Create(Owner: IXMLNode);
 begin
   inherited Create;
 
-  FParent := Parent;
+  FOwner := Owner;
 end;
 
 destructor IXMLNodeList.Destroy;
@@ -491,6 +493,12 @@ function IXMLNodeList.Remove(Item: IXMLNode): Integer;
 begin
   Result := inherited Remove(Item);
   Item.FParent := nil;
+end;
+
+function IXMLNodeList.RemoveAndFree(Item: IXMLNode): Integer;
+begin
+  Result := inherited Remove(Item);
+  Item.Free;
 end;
 
 end.

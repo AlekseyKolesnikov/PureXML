@@ -28,7 +28,7 @@ type
     destructor Destroy; override;
 
     function AddChild(Name: String; Index: Integer = -1): IXMLNode;
-    function Attributes(Name: String): String; overload;
+    function Attributes(Name: String): Variant; overload;
     procedure Attributes(Name: String; Value: Variant); overload;
     function ChildNodes: IXMLNodeList; overload;
     function ChildNodes(Index: Integer): IXMLNode; overload;
@@ -37,9 +37,12 @@ type
     procedure ChildValues(Name: String; Value: Variant); overload;
     function CloneNode(Deep: Boolean): IXMLNode;
     function HasAttribute(Name: String): Boolean;
+    function HasChildNodes: Boolean;
 
-    property NodeValue: Variant read FValue write FValue;
+    property AttributeNodes: TStringList read FAttributes;
     property NodeName: String read FName;
+    property NodeValue: Variant read FValue write FValue;
+    property ParentNode: IXMLNode read FParent;
   end;
 
   IXMLNodeList = class(TList)
@@ -66,6 +69,8 @@ type
     FXML: IXMLNode;
     FTab: String;
 
+    procedure AddAttributes(Node: IXMLNode; Data: String);
+    function AddNode(Data: String; DataStart: Integer; Parent: IXMLNode; NodeType: TNodeType): IXMLNode;
     function AttributesToString(Node: IXMLNode): String;
     procedure AddNodesToFile(Nodes: IXMLNodeList; ParentTab: String);
     procedure BuildTextFile;
@@ -74,19 +79,17 @@ type
     function ChildNodes: IXMLNodeList; overload;
     function ChildNodes(Index: Integer): IXMLNode; overload;
     function ChildNodes(Name: String): IXMLNode; overload;
-
+    procedure Clear;
     constructor Create(Owner: TObject);
     destructor Destroy; override;
     procedure LoadFromFile(FileName: String);
     procedure LoadFromXML(xml: String);
     procedure SaveToFile(FileName: String);
+    procedure SaveToXML(var xml: String);
   end;
 
 
 implementation
-
-uses
-  StrToolz;
 
 const
   EMPTY_STRING = #0;
@@ -98,19 +101,78 @@ begin
   Result := StringReplace(Result, '&lt;', '<', [rfReplaceAll]);
   Result := StringReplace(Result, '&gt;', '>', [rfReplaceAll]);
 
-  Result := StringReplace(Value, '&amp;', '&', [rfReplaceAll]);
+  Result := StringReplace(Result, '&amp;', '&', [rfReplaceAll]);
+end;
+
+function ExtVarToStr(Value: Variant): String;
+begin
+  Result := VarToStr(Value);
+  if VarType(Value) = varBoolean then
+    Result := AnsiLowerCase(Result);
+end;
+
+function GetCloseName(Name: String): String;
+begin
+  Result := StringReplace(Name, '<', '', []);
+  Result := StringReplace(Result, '>', '', []);
+  Result := Trim(StringReplace(Result, '/', '', []));
+end;
+
+function GetNextFromStr(var Value: String; Delimiter: String = ','): String;
+var
+  i: Integer;
+begin
+  Value := Trim(Value);
+
+  i := Pos(Delimiter, Value);
+  if i < 1 then
+  begin
+    Result := Value;
+    Value := '';
+    Exit;
+  end;
+
+  Result := Trim(Copy(Value, 1, i - 1));
+  Delete(Value, 1, i - 1 + Length(Delimiter));
+  Value := Trim(Value);
+end;
+
+procedure GetStartEnd(var Text, Match: String; var iStart, iEnd: Integer);
+begin
+  iStart := Pos('<', Text, iEnd);
+  iEnd := Pos('>', Text, iStart);
+  if (iEnd > 0) and (iStart > 0) then
+    Match := Copy(Text, iStart, iEnd - iStart + 1);
 end;
 
 function Sanitize(Value: String): String;
 begin
   Result := StringReplace(Value, '&', '&amp;', [rfReplaceAll]);
 
-  Result := StringReplace(Value, '"', '&quot;', [rfReplaceAll]);
+  Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
   Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
   Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
 end;
 
-procedure AddAttributes(Node: IXMLNode; Data: String);
+
+{ TXMLDocument }
+
+function TXMLDocument.AttributesToString(Node: IXMLNode): String;
+var
+  i: Integer;
+  Value: string;
+begin
+  Result := '';
+
+  for i := 0 to Node.FAttributes.Count - 1 do
+  begin
+    Value := Sanitize(Node.FAttributes.ValueFromIndex[i]);
+    Value := StringReplace(Value, EMPTY_STRING, '', [rfReplaceAll]);
+    Result := Result + ' ' + Node.FAttributes.Names[i] + '="' + Value + '"';
+  end;
+end;
+
+procedure TXMLDocument.AddAttributes(Node: IXMLNode; Data: String);
 var
   name, value: string;
 begin
@@ -121,21 +183,18 @@ begin
     value := GetNextFromStr(Data, '"');
 
     if value = '' then
-      value := EMPTY_STRING;
-
-    Node.FAttributes.Values[name] := DeSanitize(value);
+      value := EMPTY_STRING
+    else
+      Node.FAttributes.Values[name] := DeSanitize(value);
   until Pos('"', Data) < 1;
 end;
 
-function AddNode(Data: String; DataStart: Integer; Parent: IXMLNode; NodeType: TNodeType): IXMLNode;
+function TXMLDocument.AddNode(Data: String; DataStart: Integer; Parent: IXMLNode; NodeType: TNodeType): IXMLNode;
 var
   i: Integer;
   Name: string;
 begin
   Data := Trim(Data);
-
-  while Pos('  ', Data) > 0 do
-    Data := StringReplace(Data, '  ', ' ', [rfReplaceAll]);//}
 
   Result := IXMLNode.Create(Parent, NodeType);
   Result.FDataStart := DataStart;
@@ -175,46 +234,6 @@ begin
   end;
 
   Parent.FNodes.Add(Result);
-end;
-
-function ExtVarToStr(Value: Variant): String;
-begin
-  Result := VarToStr(Value);
-  if VarType(Value) = varBoolean then
-    Result := AnsiLowerCase(Result);
-end;
-
-function GetCloseName(Name: String): String;
-begin
-  Result := StringReplace(Name, '<', '', []);
-  Result := StringReplace(Result, '>', '', []);
-  Result := Trim(StringReplace(Result, '/', '', []));
-end;
-
-procedure GetStartEnd(var Text, Match: String; var iStart, iEnd: Integer);
-begin
-  iStart := Pos('<', Text, iEnd);
-  iEnd := Pos('>', Text, iStart);
-  if (iEnd > 0) and (iStart > 0) then
-    Match := Copy(Text, iStart, iEnd - iStart + 1);
-end;
-
-
-{ TXMLDocument }
-
-function TXMLDocument.AttributesToString(Node: IXMLNode): String;
-var
-  i: Integer;
-  Value: string;
-begin
-  Result := '';
-
-  for i := 0 to Node.FAttributes.Count - 1 do
-  begin
-    Value := Sanitize(Node.FAttributes.ValueFromIndex[i]);
-    Value := StringReplace(Value, EMPTY_STRING, '', [rfReplaceAll]);
-    Result := Result + ' ' + Node.FAttributes.Names[i] + '="' + Value + '"';
-  end;
 end;
 
 procedure TXMLDocument.AddNodesToFile(Nodes: IXMLNodeList; ParentTab: String);
@@ -309,6 +328,11 @@ begin
   Result := FXML.ChildNodes(Name);
 end;
 
+procedure TXMLDocument.Clear;
+begin
+  FXML.FNodes.Clear;
+end;
+
 constructor TXMLDocument.Create(Owner: TObject);
 begin
   inherited Create;
@@ -333,7 +357,7 @@ begin
   FXML := IXMLNode.Create(nil, ntDocument);
   FXML.FName := '<?xml version="1.0" encoding="utf-8"?>';
 
-  FslXML.LoadFromFile(FileName);
+  FslXML.LoadFromFile(FileName, TEncoding.UTF8);
   BuildXmlTree;
   FslXML.Clear;
 end;
@@ -352,7 +376,14 @@ end;
 procedure TXMLDocument.SaveToFile(FileName: String);
 begin
   BuildTextFile;
-  FslXML.SaveToFile(FileName);
+  FslXML.SaveToFile(FileName, TEncoding.UTF8);
+  FslXML.Clear;
+end;
+
+procedure TXMLDocument.SaveToXML(var xml: String);
+begin
+  BuildTextFile;
+  xml := FslXML.Text;
   FslXML.Clear;
 end;
 
@@ -370,11 +401,12 @@ begin
     FNodes.Insert(Index, Result);
 end;
 
-function IXMLNode.Attributes(Name: String): String;
+function IXMLNode.Attributes(Name: String): Variant;
 begin
-  Result := FAttributes.Values[Name];
-  if Result = EMPTY_STRING then
-    Result := '';
+  if FAttributes.Values[Name] = EMPTY_STRING then
+    Result := ''
+  else
+    Result := FAttributes.Values[Name];
 end;
 
 procedure IXMLNode.Attributes(Name: String; Value: Variant);
@@ -472,6 +504,11 @@ end;
 function IXMLNode.HasAttribute(Name: String): Boolean;
 begin
   Result := FAttributes.IndexOfName(Name) > -1;
+end;
+
+function IXMLNode.HasChildNodes: Boolean;
+begin
+  REsult := FNodes.Count > 0;
 end;
 
 

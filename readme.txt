@@ -14,3 +14,5 @@ Usage is similar to the standard Delphi xml engine, except:
   - CData not supported (yet?).
   - DOMVendor, Options, Encoding are not supported.
   - To delete a node and clear its memory use RemoveAndFree.
+
+You can see a difference between PureXML and original Delphi xml engine in https://github.com/AlekseyKolesnikov/Form-Data-XML-Store-Helper

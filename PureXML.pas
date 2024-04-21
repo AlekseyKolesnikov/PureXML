@@ -35,6 +35,8 @@ type
     function ChildNodes(Name: String): IXMLNode; overload;
     function ChildValues(Name: String): Variant; overload;
     procedure ChildValues(Name: String; Value: Variant); overload;
+    function ChildValuesInt(Name: String): Integer;
+    function ChildValuesInt64(Name: String): Int64;
     function CloneNode(Deep: Boolean): IXMLNode;
     function HasAttribute(Name: String): Boolean;
     function HasChildNodes: Boolean;
@@ -68,6 +70,7 @@ type
     FslXML: TStringList;
     FXML: IXMLNode;
     FTab: String;
+    FWriteBOM: Boolean;
 
     procedure AddAttributes(Node: IXMLNode; Data: String);
     function AddNode(Data: String; DataStart: Integer; Parent: IXMLNode; NodeType: TNodeType): IXMLNode;
@@ -86,6 +89,8 @@ type
     procedure LoadFromXML(xml: String);
     procedure SaveToFile(FileName: String);
     procedure SaveToXML(var xml: String);
+
+    property WriteBOM: Boolean read FWriteBOM write FWriteBOM;
   end;
 
 
@@ -341,6 +346,7 @@ begin
   FXML := IXMLNode.Create(nil, ntDocument);
   FXML.FName := '<?xml version="1.0" encoding="utf-8"?>';
   FTab := '  ';
+  FWriteBOM := True;
 end;
 
 destructor TXMLDocument.Destroy;
@@ -376,6 +382,7 @@ end;
 procedure TXMLDocument.SaveToFile(FileName: String);
 begin
   BuildTextFile;
+  FslXML.WriteBOM := WriteBOM;
   FslXML.SaveToFile(FileName, TEncoding.UTF8);
   FslXML.Clear;
 end;
@@ -483,6 +490,16 @@ var
 begin
   Node := ChildNodes(Name);
   Node.FValue := Value;
+end;
+
+function IXMLNode.ChildValuesInt(Name: String): Integer;
+begin
+  Result := StrToInt(VarToStr(ChildValues(Name)));
+end;
+
+function IXMLNode.ChildValuesInt64(Name: String): Int64;
+begin
+  Result := StrToInt64(VarToStr(ChildValues(Name)));
 end;
 
 function IXMLNode.CloneNode(Deep: Boolean): IXMLNode;

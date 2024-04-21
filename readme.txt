@@ -12,7 +12,7 @@ Usage is similar to the standard Delphi xml engine, except:
   - The same for the ChildValues.
   - AttributeNodes is a TStringList. Thus use Names, Values, ValueFromIndex and etc.
   - CData not supported (yet?).
-  - DOMVendor, Options, Encoding are not supported.
+  - DOMVendor, Options, ParseOptions, Encoding are not supported.
   - To delete a node and clear its memory use RemoveAndFree.
 
 You can see a difference between PureXML and original Delphi xml engine in https://github.com/AlekseyKolesnikov/Form-Data-XML-Store-Helper

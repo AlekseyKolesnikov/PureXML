@@ -28,6 +28,7 @@ type
     destructor Destroy; override;
 
     function AddChild(Name: String; Index: Integer = -1): IXMLNode;
+    function AsString: String;
     function Attributes(Name: String): Variant; overload;
     procedure Attributes(Name: String; Value: Variant); overload;
     function ChildNodes: IXMLNodeList; overload;
@@ -50,6 +51,7 @@ type
   IXMLNodeList = class(TList)
   protected
     FOwner: IXMLNode;
+    function AttributesToString(Node: IXMLNode): String;
     function Get(Index: Integer): IXMLNode;
     procedure Put(Index: Integer; Node: IXMLNode);
   public
@@ -57,6 +59,7 @@ type
     destructor Destroy; override;
 
     function Add(Item: IXMLNode): Integer;
+    procedure AddNodesToStringList(slText: TStringList; ParentTab, Tab: String);
     procedure Clear; override;
     function FindNode(Name: String): IXMLNode;
     function Remove(Item: IXMLNode): Integer;
@@ -74,7 +77,6 @@ type
 
     procedure AddAttributes(Node: IXMLNode; Data: String);
     function AddNode(Data: String; DataStart: Integer; Parent: IXMLNode; NodeType: TNodeType): IXMLNode;
-    function AttributesToString(Node: IXMLNode): String;
     procedure AddNodesToFile(Nodes: IXMLNodeList; ParentTab: String);
     procedure BuildTextFile;
     procedure BuildXmlTree;
@@ -162,21 +164,6 @@ end;
 
 { TXMLDocument }
 
-function TXMLDocument.AttributesToString(Node: IXMLNode): String;
-var
-  i: Integer;
-  Value: string;
-begin
-  Result := '';
-
-  for i := 0 to Node.FAttributes.Count - 1 do
-  begin
-    Value := Sanitize(Node.FAttributes.ValueFromIndex[i]);
-    Value := StringReplace(Value, EMPTY_STRING, '', [rfReplaceAll]);
-    Result := Result + ' ' + Node.FAttributes.Names[i] + '="' + Value + '"';
-  end;
-end;
-
 procedure TXMLDocument.AddAttributes(Node: IXMLNode; Data: String);
 var
   name, value: string;
@@ -242,27 +229,8 @@ begin
 end;
 
 procedure TXMLDocument.AddNodesToFile(Nodes: IXMLNodeList; ParentTab: String);
-var
-  i: Integer;
 begin
-  for i := 0 to Nodes.Count - 1 do
-  begin
-    if Nodes[i].FNodes.Count > 0 then
-    begin
-      FslXML.Add(ParentTab + FTab + '<' + Nodes[i].FName + AttributesToString(Nodes[i]) + '>');
-      AddNodesToFile(Nodes[i].FNodes, ParentTab + FTab);
-      FslXML.Add(ParentTab + FTab + '</' + Nodes[i].FName + '>');
-    end
-    else
-    if Nodes[i].NodeType = ntComment then
-      FslXML.Add(ParentTab + Nodes[i].FName)
-    else
-    if VarToStr(Nodes[i].FValue) <> '' then
-      FslXML.Add(ParentTab + FTab + '<' + Nodes[i].FName + AttributesToString(Nodes[i]) + '>' + Sanitize(ExtVarToStr(Nodes[i].FValue)) +
-        '</' + Nodes[i].FName + '>')
-    else
-      FslXML.Add(ParentTab + FTab + '<' + Nodes[i].FName + AttributesToString(Nodes[i]) + ' />');
-  end;
+  Nodes.AddNodesToStringList(FslXML, ParentTab, FTab);
 end;
 
 procedure TXMLDocument.BuildTextFile;
@@ -416,6 +384,16 @@ begin
     Result := FAttributes.Values[Name];
 end;
 
+function IXMLNode.AsString: String;
+var
+  slText: TStringList;
+begin
+  slText := TStringList.Create;
+  Self.FNodes.AddNodesToStringList(slText, '', '  ');
+  Result := slText.Text;
+  slText.Free;
+end;
+
 procedure IXMLNode.Attributes(Name: String; Value: Variant);
 var
   i: Integer;
@@ -541,6 +519,45 @@ begin
 
   Result := inherited Add(Item);
   Item.FParent := FOwner;
+end;
+
+procedure IXMLNodeList.AddNodesToStringList(slText: TStringList; ParentTab, Tab: String);
+var
+  i: Integer;
+begin
+  for i := 0 to Self.Count - 1 do
+  begin
+    if Self[i].FNodes.Count > 0 then
+    begin
+      slText.Add(ParentTab + Tab + '<' + Self[i].FName + AttributesToString(Self[i]) + '>');
+      Self[i].FNodes.AddNodesToStringList(slText, ParentTab + Tab, Tab);
+      slText.Add(ParentTab + Tab + '</' + Self[i].FName + '>');
+    end
+    else
+    if Self[i].NodeType = ntComment then
+      slText.Add(ParentTab + Self[i].FName)
+    else
+    if VarToStr(Self[i].FValue) <> '' then
+      slText.Add(ParentTab + Tab + '<' + Self[i].FName + AttributesToString(Self[i]) + '>' + Sanitize(ExtVarToStr(Self[i].FValue)) +
+        '</' + Self[i].FName + '>')
+    else
+      slText.Add(ParentTab + Tab + '<' + Self[i].FName + AttributesToString(Self[i]) + ' />');
+  end;
+end;
+
+function IXMLNodeList.AttributesToString(Node: IXMLNode): String;
+var
+  i: Integer;
+  Value: string;
+begin
+  Result := '';
+
+  for i := 0 to Node.FAttributes.Count - 1 do
+  begin
+    Value := Sanitize(Node.FAttributes.ValueFromIndex[i]);
+    Value := StringReplace(Value, EMPTY_STRING, '', [rfReplaceAll]);
+    Result := Result + ' ' + Node.FAttributes.Names[i] + '="' + Value + '"';
+  end;
 end;
 
 procedure IXMLNodeList.Clear;
